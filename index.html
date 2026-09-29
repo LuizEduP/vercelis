@@ -1,0 +1,525 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <meta name="theme-color" content="#0a0a0a" />
+  <title>X · QR Link Reader</title>
+  <meta name="description" content="Leitor de QR Code minimalista para capturar, salvar e abrir links." />
+
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: { neon: '#00FF66', ink: '#0a0a0a' },
+          fontFamily: { sans: ['Inter', 'system-ui', '-apple-system', 'Segoe UI', 'Roboto', 'sans-serif'] },
+          keyframes: {
+            pulseRing: {
+              '0%': { boxShadow: '0 0 0 0 rgba(0,255,102,0.45)' },
+              '70%': { boxShadow: '0 0 0 14px rgba(0,255,102,0)' },
+              '100%': { boxShadow: '0 0 0 0 rgba(0,255,102,0)' },
+            },
+          },
+          animation: { pulseRing: 'pulseRing 1.8s ease-out infinite' },
+        },
+      },
+    };
+  </script>
+
+  <!-- html5-qrcode -->
+  <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+
+  <style>
+    :root { color-scheme: dark; }
+    html, body { background-color: #0a0a0a; }
+    body { -webkit-tap-highlight-color: transparent; }
+
+    #reader video { border-radius: 0.75rem; object-fit: cover; }
+    #reader__scan_region { background: transparent !important; min-height: 260px; }
+    #reader__dashboard, #reader__header_message, #reader__status_span { display: none !important; }
+    #reader img[alt="Info icon"] { display: none !important; }
+
+    .scanline {
+      position: absolute;
+      left: 8%;
+      right: 8%;
+      height: 2px;
+      background: linear-gradient(90deg, transparent, #00FF66, transparent);
+      box-shadow: 0 0 12px 2px rgba(0, 255, 102, .55);
+      animation: scan 2.4s ease-in-out infinite;
+      pointer-events: none;
+    }
+    @keyframes scan {
+      0%, 100% { top: 8%; opacity: .35; }
+      50% { top: 90%; opacity: 1; }
+    }
+
+    .card-glow:hover { border-color: rgba(0, 255, 102, .55); }
+
+    ::-webkit-scrollbar { width: 6px; }
+    ::-webkit-scrollbar-track { background: #0a0a0a; }
+    ::-webkit-scrollbar-thumb { background: #1f3d2b; border-radius: 99px; }
+    ::-webkit-scrollbar-thumb:hover { background: #00FF66; }
+
+    .toast {
+      transform: translateY(120%);
+      transition: transform .35s cubic-bezier(.22,1,.36,1), opacity .35s;
+      opacity: 0;
+    }
+    .toast.show { transform: translateY(0); opacity: 1; }
+  </style>
+</head>
+
+<body class="bg-ink text-white font-sans min-h-screen antialiased selection:bg-neon selection:text-black">
+
+  <!-- ===== Header / Logo X ===== -->
+  <header class="sticky top-0 z-40 backdrop-blur-md bg-ink/80 border-b border-white/5">
+    <div class="max-w-3xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between">
+      <div class="flex items-center gap-3">
+        <!-- Logo X estilizado -->
+        <div class="relative w-10 h-10 grid place-items-center">
+          <svg viewBox="0 0 48 48" class="w-10 h-10 drop-shadow-[0_0_10px_rgba(0,255,102,0.65)]" aria-hidden="true">
+            <path d="M10 8 L38 40 M38 8 L10 40" stroke="#00FF66" stroke-width="5.5" stroke-linecap="round" fill="none"/>
+            <path d="M10 8 L38 40 M38 8 L10 40" stroke="#00FF66" stroke-width="2" stroke-linecap="round" fill="none" opacity=".35" style="filter: blur(3px)"/>
+          </svg>
+        </div>
+        <div class="leading-tight">
+          <p class="font-bold tracking-[0.25em] text-neon text-sm">X&nbsp;LINKS</p>
+          <p class="text-[11px] text-white/40 tracking-wide">leitor de QR Code</p>
+        </div>
+      </div>
+
+      <button id="btnClearAll"
+        class="hidden text-xs text-white/50 hover:text-neon border border-white/10 hover:border-neon/50 px-3 py-1.5 rounded-full transition">
+        Limpar tudo
+      </button>
+    </div>
+  </header>
+
+  <main class="max-w-3xl mx-auto px-4 sm:px-6 py-6 sm:py-10 space-y-8">
+
+    <!-- ===== Hero ===== -->
+    <section class="text-center space-y-2">
+      <h1 class="text-2xl sm:text-3xl font-semibold tracking-tight">
+        Escaneie. <span class="text-neon">Salve.</span> Abra.
+      </h1>
+      <p class="text-sm text-white/50 max-w-md mx-auto">
+        Aponte a câmera para um QR Code com link. Os endereços são salvos automaticamente neste dispositivo.
+      </p>
+    </section>
+
+    <!-- ===== Leitor de câmera ===== -->
+    <section class="rounded-2xl border border-white/10 bg-white/[0.03] p-4 sm:p-5 space-y-4 card-glow transition-colors">
+      <div class="flex items-center justify-between gap-3">
+        <div class="flex items-center gap-2">
+          <span id="statusDot" class="w-2.5 h-2.5 rounded-full bg-white/30"></span>
+          <span id="statusText" class="text-xs sm:text-sm text-white/60">Câmera desligada</span>
+        </div>
+        <button id="btnToggleCamera"
+          class="inline-flex items-center gap-2 bg-neon text-black font-semibold text-sm px-4 py-2 rounded-full hover:brightness-110 active:scale-95 transition disabled:opacity-50 disabled:pointer-events-none">
+          <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/>
+            <circle cx="12" cy="13" r="4"/>
+          </svg>
+          <span id="btnToggleCameraLabel">Ativar câmera</span>
+        </button>
+      </div>
+
+      <!-- Área da câmera -->
+      <div id="cameraWrap" class="relative hidden">
+        <div id="reader" class="rounded-xl overflow-hidden bg-black w-full"></div>
+        <!-- Moldura de mira -->
+        <div id="viewfinder" class="pointer-events-none absolute inset-0 hidden">
+          <div class="absolute inset-6 sm:inset-10 rounded-xl border border-neon/40"></div>
+          <div class="absolute left-6 top-6 sm:left-10 sm:top-10 w-8 h-8 border-l-2 border-t-2 border-neon rounded-tl-lg"></div>
+          <div class="absolute right-6 top-6 sm:right-10 sm:top-10 w-8 h-8 border-r-2 border-t-2 border-neon rounded-tr-lg"></div>
+          <div class="absolute left-6 bottom-6 sm:left-10 sm:bottom-10 w-8 h-8 border-l-2 border-b-2 border-neon rounded-bl-lg"></div>
+          <div class="absolute right-6 bottom-6 sm:right-10 sm:bottom-10 w-8 h-8 border-r-2 border-b-2 border-neon rounded-br-lg"></div>
+          <div class="scanline"></div>
+        </div>
+        <!-- Feedback de captura -->
+        <div id="captureFlash" class="pointer-events-none absolute inset-0 bg-neon/20 opacity-0 transition-opacity duration-200 rounded-xl"></div>
+      </div>
+
+      <p class="text-xs text-white/40 text-center">
+        Dica: mantenha o QR Code centralizado e estável dentro da moldura.
+      </p>
+
+      <!-- Erro de câmera -->
+      <div id="cameraError" class="hidden text-xs text-red-400 bg-red-500/10 border border-red-500/30 rounded-lg px-3 py-2"></div>
+    </section>
+
+    <!-- ===== Links salvos ===== -->
+    <section class="space-y-3">
+      <div class="flex items-center justify-between">
+        <h2 class="text-sm font-semibold tracking-[0.18em] text-white/70 uppercase">
+          Links salvos <span id="countBadge" class="ml-1 text-neon">0</span>
+        </h2>
+        <span class="text-[11px] text-white/30">persistido no LocalStorage</span>
+      </div>
+
+      <!-- Vazio -->
+      <div id="emptyState" class="rounded-2xl border border-dashed border-white/10 py-12 px-6 text-center">
+        <div class="w-12 h-12 mx-auto mb-3 grid place-items-center rounded-full border border-neon/40 text-neon">
+          <svg class="w-6 h-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/>
+            <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/>
+          </svg>
+        </div>
+        <p class="text-sm text-white/50">Nenhum link salvo ainda.</p>
+        <p class="text-xs text-white/30 mt-1">Escaneie um QR Code para começar.</p>
+      </div>
+
+      <!-- Lista -->
+      <ul id="linkList" class="space-y-3"></ul>
+    </section>
+  </main>
+
+  <footer class="border-t border-white/5 py-6 text-center text-[11px] text-white/30">
+    Feito com <span class="text-neon">◆</span> · Seus links ficam apenas neste navegador
+  </footer>
+
+  <!-- Toast -->
+  <div id="toast" class="toast fixed bottom-5 left-1/2 -translate-x-1/2 z-50 max-w-[90vw]">
+    <div class="flex items-center gap-2 bg-neon text-black text-sm font-medium px-4 py-2.5 rounded-full shadow-[0_0_25px_rgba(0,255,102,0.35)]">
+      <svg class="w-4 h-4 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+        <polyline points="20 6 9 17 4 12"/>
+      </svg>
+      <span id="toastMsg">Link salvo!</span>
+    </div>
+  </div>
+
+  <script>
+    /* =========================================================
+       Estado e persistência
+       ========================================================= */
+    const STORAGE_KEY = 'xlinks.saved.v1';
+
+    /** @type {{id:string,url:string,createdAt:number}[]} */
+    let links = loadLinks();
+
+    const els = {
+      btnToggle: document.getElementById('btnToggleCamera'),
+      btnToggleLabel: document.getElementById('btnToggleCameraLabel'),
+      btnClearAll: document.getElementById('btnClearAll'),
+      cameraWrap: document.getElementById('cameraWrap'),
+      viewfinder: document.getElementById('viewfinder'),
+      cameraError: document.getElementById('cameraError'),
+      statusDot: document.getElementById('statusDot'),
+      statusText: document.getElementById('statusText'),
+      captureFlash: document.getElementById('captureFlash'),
+      linkList: document.getElementById('linkList'),
+      emptyState: document.getElementById('emptyState'),
+      countBadge: document.getElementById('countBadge'),
+      toast: document.getElementById('toast'),
+      toastMsg: document.getElementById('toastMsg'),
+    };
+
+    function loadLinks() {
+      try {
+        const raw = localStorage.getItem(STORAGE_KEY);
+        const data = raw ? JSON.parse(raw) : [];
+        return Array.isArray(data) ? data : [];
+      } catch (e) {
+        return [];
+      }
+    }
+
+    function persist() {
+      try {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(links));
+      } catch (e) {
+        showToast('Não foi possível salvar no navegador');
+      }
+    }
+
+    function isUrl(value) {
+      try {
+        const u = new URL(value);
+        return u.protocol === 'http:' || u.protocol === 'https:';
+      } catch (e) {
+        return false;
+      }
+    }
+
+    function saveLink(url) {
+      const normalized = url.trim();
+      if (!isUrl(normalized)) return false;
+
+      if (links.some(function (l) { return l.url === normalized; })) {
+        showToast('Link já estava salvo');
+        return false;
+      }
+
+      links.unshift({
+        id: (crypto.randomUUID ? crypto.randomUUID() : Date.now() + '-' + Math.random().toString(16).slice(2)),
+        url: normalized,
+        createdAt: Date.now(),
+      });
+      persist();
+      renderList();
+      showToast('Link salvo com sucesso');
+      return true;
+    }
+
+    /* =========================================================
+       Render da lista
+       ========================================================= */
+    function formatRelative(ts) {
+      const diff = Math.max(0, Date.now() - ts);
+      const m = Math.floor(diff / 60000);
+      if (m < 1) return 'agora mesmo';
+      if (m < 60) return 'há ' + m + ' min';
+      const h = Math.floor(m / 60);
+      if (h < 24) return 'há ' + h + ' h';
+      const d = Math.floor(h / 24);
+      return 'há ' + d + (d > 1 ? ' dias' : ' dia');
+    }
+
+    function escapeHtml(str) {
+      return str.replace(/[&<>"']/g, function (c) {
+        return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+      });
+    }
+
+    function displayUrl(url) {
+      try {
+        const u = new URL(url);
+        const path = (u.pathname === '/' ? '' : u.pathname);
+        return u.hostname.replace(/^www\./, '') + path;
+      } catch (e) {
+        return url;
+      }
+    }
+
+    function renderList() {
+      els.countBadge.textContent = links.length;
+      els.btnClearAll.classList.toggle('hidden', links.length === 0);
+      els.emptyState.classList.toggle('hidden', links.length > 0);
+      els.linkList.innerHTML = '';
+
+      links.forEach(function (link) {
+        const li = document.createElement('li');
+        li.className = 'group rounded-2xl border border-white/10 bg-white/[0.03] p-4 card-glow transition-colors';
+        li.innerHTML =
+          '<div class="flex items-start gap-3">' +
+            '<div class="shrink-0 w-9 h-9 rounded-lg bg-neon/10 border border-neon/30 grid place-items-center text-neon">' +
+              '<svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' +
+                '<path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/>' +
+                '<path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/>' +
+              '</svg>' +
+            '</div>' +
+            '<div class="min-w-0 flex-1">' +
+              '<p class="text-sm text-white truncate font-medium">' + escapeHtml(displayUrl(link.url)) + '</p>' +
+              '<p class="text-xs text-white/40 truncate mt-0.5" title="' + escapeHtml(link.url) + '">' + escapeHtml(link.url) + '</p>' +
+              '<p class="text-[11px] text-neon/70 mt-1.5">' + formatRelative(link.createdAt) + '</p>' +
+            '</div>' +
+          '</div>' +
+          '<div class="grid grid-cols-3 gap-2 mt-3">' +
+            '<button data-action="open" data-id="' + link.id + '" class="inline-flex items-center justify-center gap-1.5 text-xs font-semibold bg-neon text-black rounded-lg py-2 hover:brightness-110 active:scale-95 transition">' +
+              '<svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">' +
+                '<path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/>' +
+              '</svg>Abrir link</button>' +
+            '<button data-action="copy" data-id="' + link.id + '" class="inline-flex items-center justify-center gap-1.5 text-xs font-semibold bg-white/5 border border-white/15 text-white rounded-lg py-2 hover:border-neon/60 hover:text-neon active:scale-95 transition">' +
+              '<svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">' +
+                '<rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>' +
+              '</svg>Copiar URL</button>' +
+            '<button data-action="delete" data-id="' + link.id + '" class="inline-flex items-center justify-center gap-1.5 text-xs font-semibold bg-white/5 border border-white/15 text-red-400 rounded-lg py-2 hover:border-red-500/70 hover:bg-red-500/10 active:scale-95 transition">' +
+              '<svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">' +
+                '<polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>' +
+              '</svg>Excluir</button>' +
+          '</div>';
+        els.linkList.appendChild(li);
+      });
+    }
+
+    els.linkList.addEventListener('click', async function (e) {
+      const btn = e.target.closest('button[data-action]');
+      if (!btn) return;
+      const link = links.find(function (l) { return l.id === btn.dataset.id; });
+      if (!link) return;
+
+      const action = btn.dataset.action;
+
+      if (action === 'open') {
+        window.open(link.url, '_blank', 'noopener,noreferrer');
+      }
+
+      if (action === 'copy') {
+        let ok = false;
+        try {
+          await navigator.clipboard.writeText(link.url);
+          ok = true;
+        } catch (err) {
+          // Fallback para contextos sem Clipboard API (ex.: http)
+          const ta = document.createElement('textarea');
+          ta.value = link.url;
+          ta.style.position = 'fixed';
+          ta.style.opacity = '0';
+          document.body.appendChild(ta);
+          ta.select();
+          try { ok = document.execCommand('copy'); } catch (err2) { ok = false; }
+          ta.remove();
+        }
+        showToast(ok ? 'URL copiada!' : 'Não foi possível copiar');
+      }
+
+      if (action === 'delete') {
+        links = links.filter(function (l) { return l.id !== link.id; });
+        persist();
+        renderList();
+        showToast('Link excluído');
+      }
+    });
+
+    els.btnClearAll.addEventListener('click', function () {
+      if (!links.length) return;
+      if (!confirm('Remover todos os links salvos?')) return;
+      links = [];
+      persist();
+      renderList();
+      showToast('Lista limpa');
+    });
+
+    /* =========================================================
+       Toast
+       ========================================================= */
+    let toastTimer = null;
+    function showToast(msg) {
+      els.toastMsg.textContent = msg;
+      els.toast.classList.add('show');
+      clearTimeout(toastTimer);
+      toastTimer = setTimeout(function () { els.toast.classList.remove('show'); }, 2200);
+    }
+
+    /* =========================================================
+       Câmera / Leitor QR (html5-qrcode)
+       ========================================================= */
+    let scanner = null;
+    let scanning = false;
+    let lastCaptured = { text: '', at: 0 };
+
+    function setStatus(on) {
+      els.statusDot.className = 'w-2.5 h-2.5 rounded-full ' + (on ? 'bg-neon animate-pulseRing' : 'bg-white/30');
+      els.statusText.textContent = on ? 'Câmera ativa · escaneando…' : 'Câmera desligada';
+      els.btnToggleLabel.textContent = on ? 'Desativar câmera' : 'Ativar câmera';
+      els.cameraWrap.classList.toggle('hidden', !on);
+      els.viewfinder.classList.toggle('hidden', !on);
+    }
+
+    function showCameraError(msg) {
+      els.cameraError.textContent = msg;
+      els.cameraError.classList.remove('hidden');
+    }
+
+    async function startScanner() {
+      els.cameraError.classList.add('hidden');
+
+      if (!window.Html5Qrcode) {
+        showCameraError('Biblioteca html5-qrcode não carregou. Verifique sua conexão.');
+        return;
+      }
+
+      // A API de câmera só funciona em contexto seguro (https:// ou localhost)
+      if (!window.isSecureContext || !navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        showCameraError('A câmera exige uma conexão segura (HTTPS). Ao publicar na Vercel, acesse sempre pelo domínio https://.');
+        return;
+      }
+
+      els.btnToggle.disabled = true;
+      setStatus(true);
+
+      try {
+        scanner = scanner || new Html5Qrcode('reader');
+
+        await scanner.start(
+          { facingMode: 'environment' },
+          {
+            fps: 10,
+            qrbox: function (vw, vh) {
+              const size = Math.floor(Math.min(vw, vh) * 0.72);
+              return { width: size, height: size };
+            },
+            aspectRatio: 1.0,
+          },
+          onScanSuccess,
+          function () {} // ignora frames sem QR
+        );
+
+        scanning = true;
+      } catch (err) {
+        console.error(err);
+        setStatus(false);
+        scanning = false;
+
+        let msg = 'Não foi possível acessar a câmera.';
+        const name = (err && err.name) || '';
+        if (name === 'NotAllowedError') {
+          msg = 'Permissão de câmera negada. Libere o acesso nas configurações do navegador.';
+        } else if (name === 'NotFoundError') {
+          msg = 'Nenhuma câmera encontrada neste dispositivo.';
+        } else if (name === 'NotReadableError') {
+          msg = 'Câmera está em uso por outro aplicativo.';
+        }
+        showCameraError(msg);
+      } finally {
+        els.btnToggle.disabled = false;
+      }
+    }
+
+    async function stopScanner() {
+      els.btnToggle.disabled = true;
+      try {
+        if (scanner && scanning) {
+          await scanner.stop();
+          scanner.clear();
+          scanner = null;
+        }
+      } catch (err) {
+        console.warn('Erro ao parar câmera:', err);
+      } finally {
+        scanning = false;
+        setStatus(false);
+        els.btnToggle.disabled = false;
+      }
+    }
+
+    function onScanSuccess(decodedText) {
+      const now = Date.now();
+
+      // Evita reprocessar o mesmo QR em rajada de frames
+      if (lastCaptured.text === decodedText && now - lastCaptured.at < 3000) return;
+      lastCaptured = { text: decodedText, at: now };
+
+      // Feedback visual de captura
+      els.captureFlash.style.opacity = '1';
+      setTimeout(function () { els.captureFlash.style.opacity = '0'; }, 220);
+
+      if (isUrl(decodedText)) {
+        saveLink(decodedText);
+      } else {
+        showToast('QR lido, mas não é um link válido');
+      }
+    }
+
+    els.btnToggle.addEventListener('click', function () {
+      if (scanning) stopScanner();
+      else startScanner();
+    });
+
+    // Desliga a câmera quando a aba fica oculta (economia de bateria)
+    document.addEventListener('visibilitychange', function () {
+      if (document.hidden && scanning) stopScanner();
+    });
+
+    /* =========================================================
+       Init
+       ========================================================= */
+    renderList();
+    setStatus(false);
+  </script>
+</body>
+</html>
+
