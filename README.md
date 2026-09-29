@@ -1,4 +1,4 @@
-# X · QR Link Reader
+# LUVIX · Leitor de QR Code
 
 Site responsivo para ler QR Codes com a câmera, capturar links e salvá-los localmente (LocalStorage).
 
