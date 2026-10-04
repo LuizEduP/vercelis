@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
   <meta name="theme-color" content="#0a0a0a" />
   <title>LUVIX · Leitor de QR Code</title>
-  <meta name="description" content="Leitor de QR Code minimalista para capturar, salvar e abrir links." />
+  <meta name="description" content="Leia QR Codes e gerencie links dinâmicos permanentes para empresas." />
 
   <!-- Tailwind CSS -->
   <script src="https://cdn.tailwindcss.com"></script>
@@ -30,6 +30,9 @@
 
   <!-- html5-qrcode -->
   <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="/assets/supabase-config.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 
   <style>
     :root { color-scheme: dark; }
@@ -87,27 +90,38 @@
         </div>
         <div class="leading-tight">
           <p class="font-bold tracking-[0.25em] text-neon text-sm">LUVIX</p>
-          <p class="text-[11px] text-white/40 tracking-wide">leitor de QR Code</p>
+          <p class="text-[11px] text-white/40 tracking-wide">QR Codes dinâmicos</p>
         </div>
       </div>
 
-      <button id="btnClearAll"
-        class="hidden text-xs text-white/50 hover:text-neon border border-white/10 hover:border-neon/50 px-3 py-1.5 rounded-full transition">
-        Limpar tudo
-      </button>
+        <div class="flex items-center gap-2">
+          <button id="btnReaderTab" class="text-xs text-neon border border-neon/40 px-3 py-1.5 rounded-full transition" aria-pressed="true">Leitor</button>
+          <button id="btnAdminTab" class="text-xs text-white/50 hover:text-neon border border-white/10 hover:border-neon/50 px-3 py-1.5 rounded-full transition" aria-pressed="false">Gerenciar QR</button>
+        </div>
     </div>
   </header>
 
+  <section id="redirectScreen" class="hidden min-h-screen grid place-items-center px-6 text-center">
+    <div class="max-w-md space-y-3">
+        <div class="w-12 h-12 mx-auto grid place-items-center rounded-full border border-neon/40 text-neon">
+          <span class="text-xl">↗</span>
+        </div>
+        <h1 id="redirectTitle" class="text-xl font-semibold">Abrindo destino…</h1>
+        <p id="redirectMessage" class="text-sm text-white/50">Estamos buscando o endereço atualizado.</p>
+    </div>
+  </section>
+
   <main class="max-w-3xl mx-auto px-4 sm:px-6 py-6 sm:py-10 space-y-8">
 
+    <div id="readerPanel" class="space-y-8">
     <!-- ===== Hero ===== -->
     <section class="text-center space-y-2">
-      <h1 class="text-2xl sm:text-3xl font-semibold tracking-tight">
-        Escaneie. <span class="text-neon">Salve.</span> Abra.
-      </h1>
-      <p class="text-sm text-white/50 max-w-md mx-auto">
-        Aponte a câmera para um QR Code com link. Os endereços são salvos automaticamente neste dispositivo.
-      </p>
+        <h1 class="text-2xl sm:text-3xl font-semibold tracking-tight">
+          Escaneie. <span class="text-neon">Salve.</span> Abra.
+        </h1>
+        <p class="text-sm text-white/50 max-w-md mx-auto">
+          Leia QR Codes com a câmera ou salve links neste dispositivo.
+        </p>
     </section>
 
     <!-- ===== Leitor de câmera ===== -->
@@ -157,7 +171,13 @@
         <h2 class="text-sm font-semibold tracking-[0.18em] text-white/70 uppercase">
           Links salvos <span id="countBadge" class="ml-1 text-neon">0</span>
         </h2>
-        <span class="text-[11px] text-white/30">persistido no LocalStorage</span>
+        <div class="flex items-center gap-3">
+          <span class="text-[11px] text-white/30">somente neste navegador</span>
+          <button id="btnClearAll"
+            class="hidden text-xs text-white/50 hover:text-neon border border-white/10 hover:border-neon/50 px-3 py-1.5 rounded-full transition">
+            Limpar tudo
+          </button>
+        </div>
       </div>
 
       <!-- Vazio -->
@@ -175,10 +195,102 @@
       <!-- Lista -->
       <ul id="linkList" class="space-y-3"></ul>
     </section>
+    </div>
+
+    <section id="adminPanel" class="hidden space-y-6">
+      <div class="space-y-2">
+        <h1 class="text-2xl sm:text-3xl font-semibold tracking-tight">Gerencie seus <span class="text-neon">QR Codes</span></h1>
+        <p class="text-sm text-white/50">O QR permanece igual; você pode alterar o destino sempre que precisar.</p>
+      </div>
+
+      <div id="adminSetupNotice" class="hidden rounded-2xl border border-amber-400/30 bg-amber-400/5 p-4 text-sm text-amber-100">
+        A integração com o Supabase ainda não está configurada. Siga as etapas de configuração no README para ativar esta área.
+      </div>
+
+      <form id="loginForm" class="hidden rounded-2xl border border-white/10 bg-white/[0.03] p-5 space-y-4">
+        <div>
+          <h2 class="font-semibold">Acesso administrativo</h2>
+          <p class="text-xs text-white/45 mt-1">Entre com a conta criada no Supabase.</p>
+        </div>
+        <label class="block space-y-1.5">
+          <span class="text-xs text-white/60">E-mail</span>
+          <input id="loginEmail" type="email" autocomplete="username" required
+            class="w-full rounded-lg bg-black/40 border border-white/15 px-3 py-2.5 text-sm outline-none focus:border-neon/60">
+        </label>
+        <label class="block space-y-1.5">
+          <span class="text-xs text-white/60">Senha</span>
+          <input id="loginPassword" type="password" autocomplete="current-password" required
+            class="w-full rounded-lg bg-black/40 border border-white/15 px-3 py-2.5 text-sm outline-none focus:border-neon/60">
+        </label>
+        <p id="loginError" class="hidden text-xs text-red-300" role="alert"></p>
+        <button id="btnLogin" type="submit" class="w-full bg-neon text-black font-semibold text-sm px-4 py-2.5 rounded-lg hover:brightness-110 disabled:opacity-50">Entrar</button>
+      </form>
+
+      <div id="adminWorkspace" class="hidden space-y-5">
+        <div class="flex items-center justify-between gap-3 rounded-xl border border-white/10 bg-white/[0.03] px-4 py-3">
+          <p class="text-xs text-white/60">Conectado como <span id="adminEmail" class="text-white"></span></p>
+          <button id="btnLogout" class="text-xs text-white/50 hover:text-neon">Sair</button>
+        </div>
+
+        <form id="qrForm" class="rounded-2xl border border-white/10 bg-white/[0.03] p-5 space-y-4">
+          <div>
+            <h2 id="qrFormTitle" class="font-semibold">Criar QR Code permanente</h2>
+            <p class="text-xs text-white/45 mt-1">O endereço intermediário fica fixo. Só o destino poderá ser alterado.</p>
+          </div>
+          <input id="qrRecordId" type="hidden">
+          <label class="block space-y-1.5">
+            <span class="text-xs text-white/60">Identificação da empresa ou placa</span>
+            <input id="qrName" type="text" maxlength="100" required placeholder="Ex.: Empresa Exemplo"
+              class="w-full rounded-lg bg-black/40 border border-white/15 px-3 py-2.5 text-sm outline-none focus:border-neon/60">
+          </label>
+          <label class="block space-y-1.5">
+            <span class="text-xs text-white/60">Destino atual</span>
+            <input id="qrDestination" type="url" maxlength="2048" required placeholder="https://exemplo.com"
+              class="w-full rounded-lg bg-black/40 border border-white/15 px-3 py-2.5 text-sm outline-none focus:border-neon/60">
+          </label>
+          <label class="block space-y-1.5">
+            <span class="text-xs text-white/60">Identificador do QR (não muda depois de criar)</span>
+            <div class="flex items-center gap-2 rounded-lg bg-black/40 border border-white/15 px-3">
+              <span class="text-xs text-white/35 shrink-0">/r/</span>
+              <input id="qrSlug" type="text" maxlength="60" required pattern="[a-z0-9]+(?:-[a-z0-9]+)*" placeholder="empresa-exemplo"
+                class="min-w-0 flex-1 bg-transparent py-2.5 text-sm outline-none focus:border-neon/60">
+            </div>
+            <span id="slugHint" class="block text-[11px] text-white/35">Use letras minúsculas, números e hífens.</span>
+          </label>
+          <p id="qrFormError" class="hidden text-xs text-red-300" role="alert"></p>
+          <div class="flex flex-wrap gap-2">
+            <button id="btnSaveQr" type="submit" class="bg-neon text-black font-semibold text-sm px-4 py-2.5 rounded-lg hover:brightness-110 disabled:opacity-50">Criar QR Code</button>
+            <button id="btnCancelEdit" type="button" class="hidden text-sm text-white/60 border border-white/15 px-4 py-2.5 rounded-lg hover:border-white/40">Cancelar edição</button>
+          </div>
+        </form>
+
+        <section class="space-y-3">
+          <div class="flex items-center justify-between">
+            <h2 class="text-sm font-semibold tracking-[0.18em] text-white/70 uppercase">QR Codes criados <span id="qrCount" class="ml-1 text-neon">0</span></h2>
+            <button id="btnRefreshQr" class="text-xs text-white/50 hover:text-neon">Atualizar lista</button>
+          </div>
+          <div id="qrEmptyState" class="rounded-2xl border border-dashed border-white/10 py-10 px-6 text-center text-sm text-white/45">Nenhum QR Code criado ainda.</div>
+          <ul id="qrList" class="space-y-3"></ul>
+        </section>
+
+        <section id="qrPreview" class="hidden rounded-2xl border border-neon/30 bg-white/[0.03] p-5 text-center space-y-3">
+          <div class="flex items-start justify-between gap-3 text-left">
+            <div>
+              <h2 id="qrPreviewTitle" class="font-semibold"></h2>
+              <p id="qrPreviewUrl" class="text-xs text-white/45 break-all mt-1"></p>
+            </div>
+            <button id="btnCloseQr" type="button" class="text-white/50 hover:text-white" aria-label="Fechar QR Code">✕</button>
+          </div>
+          <div id="qrCanvas" class="inline-block rounded-lg bg-white p-3"></div>
+          <div><button id="btnDownloadQr" type="button" class="text-sm font-semibold text-black bg-neon px-4 py-2 rounded-lg hover:brightness-110">Baixar QR Code PNG</button></div>
+          <p class="text-[11px] text-white/35">Antes de imprimir, teste o QR Code publicado no domínio definitivo.</p>
+        </section>
+      </div>
+    </section>
   </main>
 
   <footer class="border-t border-white/5 py-6 text-center text-[11px] text-white/30">
-    Feito com <span class="text-neon">◆</span> · Seus links ficam apenas neste navegador
+    Feito com <span class="text-neon">◆</span> · QR Codes dinâmicos gerenciados com acesso protegido
   </footer>
 
   <!-- Toast -->
@@ -204,6 +316,13 @@
       btnToggle: document.getElementById('btnToggleCamera'),
       btnToggleLabel: document.getElementById('btnToggleCameraLabel'),
       btnClearAll: document.getElementById('btnClearAll'),
+      btnReaderTab: document.getElementById('btnReaderTab'),
+      btnAdminTab: document.getElementById('btnAdminTab'),
+      readerPanel: document.getElementById('readerPanel'),
+      adminPanel: document.getElementById('adminPanel'),
+      redirectScreen: document.getElementById('redirectScreen'),
+      redirectTitle: document.getElementById('redirectTitle'),
+      redirectMessage: document.getElementById('redirectMessage'),
       cameraWrap: document.getElementById('cameraWrap'),
       viewfinder: document.getElementById('viewfinder'),
       cameraError: document.getElementById('cameraError'),
@@ -215,6 +334,38 @@
       countBadge: document.getElementById('countBadge'),
       toast: document.getElementById('toast'),
       toastMsg: document.getElementById('toastMsg'),
+    };
+
+    const adminEls = {
+      setupNotice: document.getElementById('adminSetupNotice'),
+      loginForm: document.getElementById('loginForm'),
+      loginEmail: document.getElementById('loginEmail'),
+      loginPassword: document.getElementById('loginPassword'),
+      loginError: document.getElementById('loginError'),
+      btnLogin: document.getElementById('btnLogin'),
+      workspace: document.getElementById('adminWorkspace'),
+      adminEmail: document.getElementById('adminEmail'),
+      btnLogout: document.getElementById('btnLogout'),
+      qrForm: document.getElementById('qrForm'),
+      qrFormTitle: document.getElementById('qrFormTitle'),
+      qrRecordId: document.getElementById('qrRecordId'),
+      qrName: document.getElementById('qrName'),
+      qrDestination: document.getElementById('qrDestination'),
+      qrSlug: document.getElementById('qrSlug'),
+      slugHint: document.getElementById('slugHint'),
+      qrFormError: document.getElementById('qrFormError'),
+      btnSaveQr: document.getElementById('btnSaveQr'),
+      btnCancelEdit: document.getElementById('btnCancelEdit'),
+      qrCount: document.getElementById('qrCount'),
+      qrEmptyState: document.getElementById('qrEmptyState'),
+      qrList: document.getElementById('qrList'),
+      btnRefreshQr: document.getElementById('btnRefreshQr'),
+      qrPreview: document.getElementById('qrPreview'),
+      qrPreviewTitle: document.getElementById('qrPreviewTitle'),
+      qrPreviewUrl: document.getElementById('qrPreviewUrl'),
+      qrCanvas: document.getElementById('qrCanvas'),
+      btnDownloadQr: document.getElementById('btnDownloadQr'),
+      btnCloseQr: document.getElementById('btnCloseQr'),
     };
 
     function loadLinks() {
@@ -243,6 +394,195 @@
         return false;
       }
     }
+
+    function getSupabaseClient() {
+      const config = window.LUVIX_SUPABASE_CONFIG || {};
+      if (!config.url || !config.anonKey || !window.supabase) return null;
+      try {
+        return window.supabase.createClient(config.url, config.anonKey);
+      } catch (error) {
+        console.error('Configuração do Supabase inválida:', error);
+        return null;
+      }
+    }
+
+    const supabaseClient = getSupabaseClient();
+    let currentQrLinks = [];
+
+    function switchPanel(panel) {
+      const showAdmin = panel === 'admin';
+      els.readerPanel.classList.toggle('hidden', showAdmin);
+      els.adminPanel.classList.toggle('hidden', !showAdmin);
+      els.btnReaderTab.classList.toggle('text-neon', !showAdmin);
+      els.btnReaderTab.classList.toggle('border-neon/40', !showAdmin);
+      els.btnReaderTab.classList.toggle('text-white/50', showAdmin);
+      els.btnReaderTab.classList.toggle('border-white/10', showAdmin);
+      els.btnAdminTab.classList.toggle('text-neon', showAdmin);
+      els.btnAdminTab.classList.toggle('border-neon/40', showAdmin);
+      els.btnAdminTab.classList.toggle('text-white/50', !showAdmin);
+      els.btnAdminTab.classList.toggle('border-white/10', !showAdmin);
+      els.btnReaderTab.setAttribute('aria-pressed', String(!showAdmin));
+      els.btnAdminTab.setAttribute('aria-pressed', String(showAdmin));
+    }
+
+    function setFormMessage(element, message) {
+      element.textContent = message;
+      element.classList.toggle('hidden', !message);
+    }
+
+    function setAdminSession(session) {
+      const signedIn = Boolean(session);
+      adminEls.loginForm.classList.toggle('hidden', signedIn || !supabaseClient);
+      adminEls.workspace.classList.toggle('hidden', !signedIn);
+      if (session && session.user) {
+        adminEls.adminEmail.textContent = session.user.email || 'Conta autenticada';
+      } else {
+        currentQrLinks = [];
+        renderQrLinks();
+      }
+    }
+
+    function slugFromName(value) {
+      return value.normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, '-')
+        .replace(/^-+|-+$/g, '')
+        .slice(0, 60)
+        .replace(/-+$/g, '');
+    }
+
+    async function loadQrLinks() {
+      if (!supabaseClient) return;
+      setFormMessage(adminEls.qrFormError, '');
+      try {
+        const { data, error } = await supabaseClient
+          .from('qr_links')
+          .select('id, company_name, slug, destination_url, is_active, created_at')
+          .order('created_at', { ascending: false });
+        if (error) {
+          console.error('Falha ao carregar os QR Codes:', error);
+          setFormMessage(adminEls.qrFormError, 'Não foi possível carregar os QR Codes. Confira a conexão e as permissões do Supabase.');
+          return;
+        }
+        currentQrLinks = data || [];
+        renderQrLinks();
+      } catch (error) {
+        console.error('Falha ao carregar os QR Codes:', error);
+        setFormMessage(adminEls.qrFormError, 'O serviço de QR Codes está indisponível. Tente novamente.');
+      }
+    }
+
+    function renderQrLinks() {
+      adminEls.qrList.innerHTML = '';
+      adminEls.qrCount.textContent = currentQrLinks.length;
+      adminEls.qrEmptyState.classList.toggle('hidden', currentQrLinks.length > 0);
+
+      currentQrLinks.forEach(function (record) {
+        const redirectUrl = new URL('/r/' + encodeURIComponent(record.slug), window.location.origin).href;
+        const li = document.createElement('li');
+        li.className = 'rounded-2xl border border-white/10 bg-white/[0.03] p-4 card-glow transition-colors';
+        li.innerHTML =
+          '<div class="flex items-start justify-between gap-3">' +
+            '<div class="min-w-0">' +
+              '<p class="text-sm font-medium truncate">' + escapeHtml(record.company_name) + '</p>' +
+              '<p class="text-xs text-white/40 mt-1 break-all">Destino: ' + escapeHtml(record.destination_url) + '</p>' +
+              '<p class="text-xs text-neon/80 mt-1 break-all">QR fixo: ' + escapeHtml(redirectUrl) + '</p>' +
+              '<p class="text-[11px] mt-1 ' + (record.is_active ? 'text-white/35' : 'text-amber-300') + '">' + (record.is_active ? 'Ativo' : 'Desativado') + '</p>' +
+            '</div>' +
+          '</div>' +
+          '<div class="grid grid-cols-3 gap-2 mt-3">' +
+            '<button data-qr-action="preview" data-id="' + escapeHtml(record.id) + '" class="text-xs font-semibold bg-neon text-black rounded-lg py-2 hover:brightness-110">Ver QR</button>' +
+            '<button data-qr-action="edit" data-id="' + escapeHtml(record.id) + '" class="text-xs font-semibold bg-white/5 border border-white/15 text-white rounded-lg py-2 hover:border-neon/60">Editar destino</button>' +
+            '<button data-qr-action="copy" data-id="' + escapeHtml(record.id) + '" class="text-xs font-semibold bg-white/5 border border-white/15 text-white rounded-lg py-2 hover:border-neon/60">Copiar link</button>' +
+          '</div>';
+        adminEls.qrList.appendChild(li);
+      });
+    }
+
+    function showQrPreview(record) {
+      if (!window.QRCode) {
+        setFormMessage(adminEls.qrFormError, 'A biblioteca para gerar QR Code não carregou. Verifique sua conexão e tente novamente.');
+        return;
+      }
+      const redirectUrl = new URL('/r/' + encodeURIComponent(record.slug), window.location.origin).href;
+      adminEls.qrPreviewTitle.textContent = record.company_name;
+      adminEls.qrPreviewUrl.textContent = redirectUrl;
+      adminEls.qrCanvas.innerHTML = '';
+      new QRCode(adminEls.qrCanvas, {
+        text: redirectUrl,
+        width: 240,
+        height: 240,
+        colorDark: '#0a0a0a',
+        colorLight: '#ffffff',
+        correctLevel: QRCode.CorrectLevel.H,
+      });
+      adminEls.qrPreview.classList.remove('hidden');
+      adminEls.qrPreview.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+
+    function startQrEdit(record) {
+      adminEls.qrRecordId.value = record.id;
+      adminEls.qrName.value = record.company_name;
+      adminEls.qrDestination.value = record.destination_url;
+      adminEls.qrSlug.value = record.slug;
+      adminEls.qrSlug.readOnly = true;
+      adminEls.qrSlug.classList.add('text-white/40');
+      adminEls.slugHint.textContent = 'O identificador é permanente para não invalidar o QR já impresso.';
+      adminEls.qrFormTitle.textContent = 'Editar destino do QR Code';
+      adminEls.btnSaveQr.textContent = 'Salvar alterações';
+      adminEls.btnCancelEdit.classList.remove('hidden');
+      setFormMessage(adminEls.qrFormError, '');
+      adminEls.qrForm.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+
+    function resetQrForm() {
+      adminEls.qrForm.reset();
+      adminEls.qrRecordId.value = '';
+      adminEls.qrSlug.readOnly = false;
+      adminEls.qrSlug.classList.remove('text-white/40');
+      adminEls.slugHint.textContent = 'Use letras minúsculas, números e hífens.';
+      adminEls.qrFormTitle.textContent = 'Criar QR Code permanente';
+      adminEls.btnSaveQr.textContent = 'Criar QR Code';
+      adminEls.btnCancelEdit.classList.add('hidden');
+      setFormMessage(adminEls.qrFormError, '');
+    }
+
+    async function handleRedirect(slug) {
+      document.querySelector('header').classList.add('hidden');
+      document.querySelector('main').classList.add('hidden');
+      document.querySelector('footer').classList.add('hidden');
+      document.getElementById('toast').classList.add('hidden');
+      els.redirectScreen.classList.remove('hidden');
+
+      if (!supabaseClient) {
+        els.redirectTitle.textContent = 'QR Code indisponível';
+        els.redirectMessage.textContent = 'O serviço de redirecionamento ainda não está configurado.';
+        return;
+      }
+
+      try {
+        const { data, error } = await supabaseClient.rpc('resolve_qr_destination', { requested_slug: slug });
+        if (error) {
+          console.error('Falha ao resolver o destino do QR Code:', error);
+          els.redirectTitle.textContent = 'Não foi possível abrir este QR Code';
+          els.redirectMessage.textContent = 'O serviço está temporariamente indisponível. Tente novamente mais tarde.';
+          return;
+        }
+        if (!data || !isUrl(data)) {
+          els.redirectTitle.textContent = 'QR Code não encontrado';
+          els.redirectMessage.textContent = 'Este endereço não existe ou foi desativado.';
+          return;
+        }
+        window.location.replace(data);
+      } catch (error) {
+        console.error('Falha ao resolver o destino do QR Code:', error);
+        els.redirectTitle.textContent = 'Não foi possível abrir este QR Code';
+        els.redirectMessage.textContent = 'O serviço está temporariamente indisponível. Tente novamente mais tarde.';
+      }
+    }
+
+    const redirectMatch = window.location.pathname.match(/^\/r\/([a-z0-9]+(?:-[a-z0-9]+)*)\/?$/);
 
     function saveLink(url) {
       const normalized = url.trim();
@@ -509,6 +849,159 @@
       else startScanner();
     });
 
+    els.btnReaderTab.addEventListener('click', function () { switchPanel('reader'); });
+    els.btnAdminTab.addEventListener('click', function () { switchPanel('admin'); });
+
+    adminEls.loginForm.addEventListener('submit', async function (event) {
+      event.preventDefault();
+      setFormMessage(adminEls.loginError, '');
+      if (!supabaseClient) {
+        setFormMessage(adminEls.loginError, 'A integração com o Supabase não está configurada.');
+        return;
+      }
+      adminEls.btnLogin.disabled = true;
+      try {
+        const { error } = await supabaseClient.auth.signInWithPassword({
+          email: adminEls.loginEmail.value.trim(),
+          password: adminEls.loginPassword.value,
+        });
+        if (error) setFormMessage(adminEls.loginError, 'Não foi possível entrar. Confira o e-mail e a senha.');
+      } catch (error) {
+        console.error('Falha no login administrativo:', error);
+        setFormMessage(adminEls.loginError, 'O serviço de autenticação está indisponível. Tente novamente.');
+      } finally {
+        adminEls.btnLogin.disabled = false;
+      }
+    });
+
+    adminEls.btnLogout.addEventListener('click', async function () {
+      if (!supabaseClient) return;
+      try {
+        const { error } = await supabaseClient.auth.signOut();
+        if (error) {
+          console.error('Falha ao sair da conta:', error);
+          showToast('Não foi possível encerrar a sessão');
+        } else {
+          showToast('Sessão encerrada');
+        }
+      } catch (error) {
+        console.error('Falha ao sair da conta:', error);
+        showToast('Não foi possível encerrar a sessão');
+      }
+    });
+
+    adminEls.qrName.addEventListener('input', function () {
+      if (!adminEls.qrRecordId.value) adminEls.qrSlug.value = slugFromName(adminEls.qrName.value);
+    });
+
+    adminEls.qrForm.addEventListener('submit', async function (event) {
+      event.preventDefault();
+      setFormMessage(adminEls.qrFormError, '');
+      const recordId = adminEls.qrRecordId.value;
+      const companyName = adminEls.qrName.value.trim();
+      const destination = adminEls.qrDestination.value.trim();
+      const slug = adminEls.qrSlug.value.trim().toLowerCase();
+
+      if (!companyName || !isUrl(destination) || !/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(slug)) {
+        setFormMessage(adminEls.qrFormError, 'Informe uma identificação, um destino HTTP/HTTPS válido e um identificador com letras minúsculas, números e hífens.');
+        return;
+      }
+
+      adminEls.btnSaveQr.disabled = true;
+      try {
+        const values = {
+          company_name: companyName,
+          destination_url: destination,
+          updated_at: new Date().toISOString(),
+        };
+        const result = recordId
+          ? await supabaseClient.from('qr_links').update(values).eq('id', recordId).select().single()
+          : await supabaseClient.from('qr_links').insert({ ...values, slug }).select().single();
+
+        if (result.error) {
+          console.error('Falha ao salvar QR Code:', result.error);
+          const message = result.error.code === '23505'
+            ? 'Esse identificador já está em uso. Escolha outro para este QR Code.'
+            : 'Não foi possível salvar. Confira sua conexão e as permissões do Supabase.';
+          setFormMessage(adminEls.qrFormError, message);
+          return;
+        }
+
+        resetQrForm();
+        await loadQrLinks();
+        showToast(recordId ? 'Destino atualizado; o QR continua igual' : 'QR Code criado');
+        if (result.data) showQrPreview(result.data);
+      } catch (error) {
+        console.error('Falha inesperada ao salvar QR Code:', error);
+        setFormMessage(adminEls.qrFormError, 'Ocorreu um erro ao salvar. Tente novamente.');
+      } finally {
+        adminEls.btnSaveQr.disabled = false;
+      }
+    });
+
+    adminEls.qrList.addEventListener('click', async function (event) {
+      const button = event.target.closest('button[data-qr-action]');
+      if (!button) return;
+      const record = currentQrLinks.find(function (item) { return item.id === button.dataset.id; });
+      if (!record) return;
+
+      if (button.dataset.qrAction === 'edit') startQrEdit(record);
+      if (button.dataset.qrAction === 'preview') showQrPreview(record);
+      if (button.dataset.qrAction === 'copy') {
+        const redirectUrl = new URL('/r/' + encodeURIComponent(record.slug), window.location.origin).href;
+        try {
+          await navigator.clipboard.writeText(redirectUrl);
+          showToast('Link permanente copiado');
+        } catch (error) {
+          console.error('Falha ao copiar link permanente:', error);
+          showToast('Não foi possível copiar o link');
+        }
+      }
+    });
+
+    adminEls.btnCancelEdit.addEventListener('click', resetQrForm);
+    adminEls.btnRefreshQr.addEventListener('click', loadQrLinks);
+    adminEls.btnCloseQr.addEventListener('click', function () { adminEls.qrPreview.classList.add('hidden'); });
+
+    adminEls.btnDownloadQr.addEventListener('click', function () {
+      const canvas = adminEls.qrCanvas.querySelector('canvas');
+      if (!canvas) {
+        showToast('QR Code ainda não está pronto para baixar');
+        return;
+      }
+      const link = document.createElement('a');
+      link.href = canvas.toDataURL('image/png');
+      link.download = slugFromName(adminEls.qrPreviewTitle.textContent || 'qr-code') + '.png';
+      link.click();
+    });
+
+    function initializeAdmin() {
+      if (!supabaseClient) {
+        adminEls.setupNotice.classList.remove('hidden');
+        return;
+      }
+      supabaseClient.auth.onAuthStateChange(function (event, session) {
+        if (event === 'SIGNED_IN' || event === 'SIGNED_OUT' || event === 'TOKEN_REFRESHED' || event === 'INITIAL_SESSION') {
+          setAdminSession(session);
+          if (session) window.setTimeout(loadQrLinks, 0);
+        }
+      });
+      supabaseClient.auth.getSession().then(function (result) {
+        if (result.error) {
+          console.error('Falha ao verificar a sessão:', result.error);
+          setFormMessage(adminEls.loginError, 'Não foi possível verificar a sessão. Atualize a página e tente novamente.');
+          setAdminSession(null);
+          return;
+        }
+        setAdminSession(result.data.session);
+        if (result.data.session) loadQrLinks();
+      }).catch(function (error) {
+        console.error('Falha ao verificar a sessão:', error);
+        setFormMessage(adminEls.loginError, 'O serviço de autenticação está indisponível. Atualize a página e tente novamente.');
+        setAdminSession(null);
+      });
+    }
+
     // Desliga a câmera quando a aba fica oculta (economia de bateria)
     document.addEventListener('visibilitychange', function () {
       if (document.hidden && scanning) stopScanner();
@@ -517,9 +1010,13 @@
     /* =========================================================
        Init
        ========================================================= */
-    renderList();
-    setStatus(false);
+    if (redirectMatch) {
+      handleRedirect(redirectMatch[1]);
+    } else {
+      renderList();
+      setStatus(false);
+      initializeAdmin();
+    }
   </script>
 </body>
 </html>
-
