@@ -491,10 +491,11 @@
               '<p class="text-[11px] mt-1 ' + (record.is_active ? 'text-white/35' : 'text-amber-300') + '">' + (record.is_active ? 'Ativo' : 'Desativado') + '</p>' +
             '</div>' +
           '</div>' +
-          '<div class="grid grid-cols-3 gap-2 mt-3">' +
+          '<div class="grid grid-cols-2 gap-2 mt-3">' +
             '<button data-qr-action="preview" data-id="' + escapeHtml(record.id) + '" class="text-xs font-semibold bg-neon text-black rounded-lg py-2 hover:brightness-110">Ver QR</button>' +
             '<button data-qr-action="edit" data-id="' + escapeHtml(record.id) + '" class="text-xs font-semibold bg-white/5 border border-white/15 text-white rounded-lg py-2 hover:border-neon/60">Editar destino</button>' +
             '<button data-qr-action="copy" data-id="' + escapeHtml(record.id) + '" class="text-xs font-semibold bg-white/5 border border-white/15 text-white rounded-lg py-2 hover:border-neon/60">Copiar link</button>' +
+            '<button data-qr-action="delete" data-id="' + escapeHtml(record.id) + '" class="text-xs font-semibold bg-white/5 border border-white/15 text-red-400 rounded-lg py-2 hover:border-red-500/70 hover:bg-red-500/10">Excluir</button>' +
           '</div>';
         adminEls.qrList.appendChild(li);
       });
@@ -955,6 +956,35 @@
         } catch (error) {
           console.error('Falha ao copiar link permanente:', error);
           showToast('Não foi possível copiar o link');
+        }
+      }
+
+      if (button.dataset.qrAction === 'delete') {
+        if (!supabaseClient) return;
+        const confirmed = confirm('Excluir o QR Code "' + record.company_name + '"? O link /r/' + record.slug + ' deixará de funcionar e não poderá ser recuperado.');
+        if (!confirmed) return;
+
+        button.disabled = true;
+        button.textContent = 'Excluindo...';
+        try {
+          const { error } = await supabaseClient.from('qr_links').delete().eq('id', record.id);
+          if (error) {
+            console.error('Falha ao excluir QR Code:', error);
+            showToast('Não foi possível excluir. Confira as permissões do Supabase.');
+            button.disabled = false;
+            button.textContent = 'Excluir';
+            return;
+          }
+
+          if (adminEls.qrRecordId.value === record.id) resetQrForm();
+          adminEls.qrPreview.classList.add('hidden');
+          showToast('QR Code excluído');
+          await loadQrLinks();
+        } catch (error) {
+          console.error('Falha inesperada ao excluir QR Code:', error);
+          showToast('Ocorreu um erro ao excluir. Tente novamente.');
+          button.disabled = false;
+          button.textContent = 'Excluir';
         }
       }
     });

@@ -5,6 +5,7 @@ Site responsivo para ler QR Codes e administrar links intermediários permanente
 - Leitor em tempo real com [html5-qrcode](https://github.com/mebjas/html5-qrcode)
 - Área de gerenciamento protegida por autenticação Supabase
 - Dados compartilhados e persistidos no Supabase
+- QR Codes podem ser criados, editados e excluídos pela área de gerenciamento
 - QR Codes baixáveis em PNG
 - Os links escaneados pelo leitor continuam salvos apenas no navegador (LocalStorage)
 
